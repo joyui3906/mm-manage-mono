@@ -1,10 +1,12 @@
 import "reflect-metadata";
 import { NestFactory } from "@nestjs/core";
 import { AppModule } from "./modules/app.module";
+import { ApiExceptionFilter } from "./common/filters/api-exception.filter";
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
   app.setGlobalPrefix("api");
+  app.useGlobalFilters(new ApiExceptionFilter());
   await app.listen(4000, "0.0.0.0");
   console.log("API server running on http://localhost:4000/api");
 }

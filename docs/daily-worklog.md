@@ -9,13 +9,14 @@
   - `@mm/api`에 `zod` 의존성 추가 및 빌드 산출 반영.
   - timesheets 승인/반려 API 추가 (`POST /timesheets/assignments/:id/reject`).
   - `timesheets` 화면에 배정 목록 + 승인/반려 액션 추가.
+  - 배정 생성 화면 추가(`/timesheets/assignments/new`) 및 사유(reason) 입력 지원.
+  - 배정 취소 API/UX 추가 (`POST /timesheets/assignments/:id/cancel` + 취소 버튼).
   - 웹/API 타입체크 및 빌드 통과 확인.
 - 이슈 처리/운영 보완
   - `pnpm install` 및 WSL/도커 관련 환경에서의 재실행/접속 정리.
   - GitHub 업로드 후 재개/인수인계 관련 접근성 이슈 정리.
 - 미완료/다음 예정
-  - `.dist`와 IDE 설정 변경 분리(필요한 경우 `.gitignore`/커밋 범위 정리).
-  - 배정 생성 시 `reason` 입력 폼 및 배정 해제/취소 UX 보강.
+  - `.dist`/`.idea` 추적 분리 정리(.gitignore 보강) 완료.
   - 프로젝트/작업 수정 및 삭제 API 추가.
   - 에러 응답을 웹 UI에서 사용자 메시지로 렌더링.
 

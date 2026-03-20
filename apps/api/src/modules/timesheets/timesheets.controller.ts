@@ -3,6 +3,8 @@ import { TimesheetsService } from "./timesheets.service";
 import { Roles } from "../../common/auth/roles.decorator";
 import { CurrentUser } from "../../common/auth/current-user.decorator";
 import { AuthUser } from "../../common/types/current-user";
+import { parseBody } from "../../common/validation/parse";
+import { z } from "zod";
 
 type CreateAssignmentDto = {
   taskId: string;
@@ -18,6 +20,21 @@ type CreateTimeEntryDto = {
   hours: number;
   note?: string;
 };
+
+const createAssignmentSchema = z.object({
+  taskId: z.string().min(1),
+  userId: z.string().min(1),
+  plannedHours: z.coerce.number().int().positive(),
+  reason: z.string().optional(),
+});
+
+const createTimeEntrySchema = z.object({
+  taskId: z.string().min(1),
+  userId: z.string().min(1),
+  date: z.string().min(1),
+  hours: z.coerce.number().nonnegative(),
+  note: z.string().optional(),
+});
 
 @Controller("timesheets")
 export class TimesheetsController {
@@ -43,7 +60,8 @@ export class TimesheetsController {
 
   @Post("assignments")
   @Roles("owner", "manager")
-  createAssignment(@Body() payload: CreateAssignmentDto, @CurrentUser() user: AuthUser) {
+  createAssignment(@Body() body: unknown, @CurrentUser() user: AuthUser) {
+    const payload = parseBody(createAssignmentSchema, body);
     return this.service.createAssignment(payload, user);
   }
 
@@ -55,7 +73,8 @@ export class TimesheetsController {
 
   @Post("entries")
   @Roles("owner", "manager", "member")
-  createEntry(@Body() payload: CreateTimeEntryDto, @CurrentUser() user: AuthUser) {
+  createEntry(@Body() body: unknown, @CurrentUser() user: AuthUser) {
+    const payload = parseBody(createTimeEntrySchema, body);
     return this.service.createEntry(payload, user);
   }
 
@@ -63,5 +82,17 @@ export class TimesheetsController {
   @Roles("owner", "manager")
   approve(@Param("id") id: string, @CurrentUser() user: AuthUser) {
     return this.service.updateAssignmentStatus(id, "approved", user.orgId);
+  }
+
+  @Post("assignments/:id/reject")
+  @Roles("owner", "manager")
+  reject(@Param("id") id: string, @CurrentUser() user: AuthUser) {
+    return this.service.updateAssignmentStatus(id, "rejected", user.orgId);
+  }
+
+  @Post("assignments/:id/cancel")
+  @Roles("owner", "manager", "member")
+  cancel(@Param("id") id: string, @CurrentUser() user: AuthUser) {
+    return this.service.cancelAssignment(id, user);
   }
 }

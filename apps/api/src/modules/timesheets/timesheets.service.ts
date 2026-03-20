@@ -1,4 +1,4 @@
-import { ForbiddenException, Injectable } from "@nestjs/common";
+import { ForbiddenException, Injectable, NotFoundException } from "@nestjs/common";
 import { getPrismaClient } from "@mm/prisma";
 import { AuthUser } from "../../common/types/current-user";
 
@@ -181,6 +181,44 @@ export class TimesheetsService {
     return this.prisma.taskAssignment.update({
       where: { id },
       data: { status },
+    });
+  }
+
+  async cancelAssignment(id: string, actor: AuthUser) {
+    const assignment = await this.prisma.taskAssignment.findUnique({
+      where: { id },
+      select: {
+        userId: true,
+        status: true,
+        task: {
+          select: {
+            project: {
+              select: { orgId: true },
+            },
+          },
+        },
+      },
+    });
+
+    if (!assignment) {
+      throw new NotFoundException("Assignment not found");
+    }
+
+    if (assignment.task.project.orgId !== actor.orgId) {
+      throw new ForbiddenException("Assignment not found in organization");
+    }
+
+    if (assignment.status !== "pending") {
+      throw new ForbiddenException("Only pending assignments can be canceled");
+    }
+
+    if (actor.role === "member" && assignment.userId !== actor.userId) {
+      throw new ForbiddenException("Members can only cancel their own assignments");
+    }
+
+    return this.prisma.taskAssignment.update({
+      where: { id },
+      data: { status: "rejected" },
     });
   }
 }

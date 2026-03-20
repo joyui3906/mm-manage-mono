@@ -1,0 +1,136 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  owner
+  manager
+  member
+}
+
+enum ProjectStatus {
+  planning
+  active
+  on_hold
+  done
+  cancelled
+}
+
+enum TaskStatus {
+  todo
+  in_progress
+  blocked
+  done
+}
+
+enum AssignmentStatus {
+  pending
+  approved
+  rejected
+}
+
+model Organization {
+  id          String   @id @default(cuid())
+  name        String
+  timezone    String   @default("Asia/Seoul")
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  projects    Project[]
+  users       User[]
+}
+
+model User {
+  id           String   @id @default(cuid())
+  orgId        String
+  organization Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  email        String   @unique
+  name         String
+  role         Role
+  skills       String[]
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  assignments  TaskAssignment[]
+  timeEntries  TimeEntry[]
+  workloads    UserAvailability[]
+  ownedProjects Project[] @relation("ProjectOwner")
+}
+
+model Project {
+  id          String        @id @default(cuid())
+  orgId       String
+  organization Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  name        String
+  code        String
+  status      ProjectStatus @default(planning)
+  budgetHours Int           @default(0)
+  startDate   DateTime?
+  endDate     DateTime?
+  ownerUserId String?
+  ownerUser   User?         @relation("ProjectOwner", fields: [ownerUserId], references: [id], onDelete: SetNull)
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+
+  tasks       Task[]
+}
+
+model Task {
+  id           String   @id @default(cuid())
+  projectId    String
+  project      Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  title        String
+  description  String?
+  plannedHours Int      @default(0)
+  status       TaskStatus @default(todo)
+  dueDate      DateTime?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  assignments  TaskAssignment[]
+  timeEntries  TimeEntry[]
+}
+
+model TaskAssignment {
+  id         String            @id @default(cuid())
+  taskId     String
+  task       Task              @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  userId     String
+  user       User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  status     AssignmentStatus  @default(pending)
+  plannedHours Int             @default(0)
+  actualHours Int             @default(0)
+  updatedAt  DateTime          @updatedAt
+  createdAt  DateTime          @default(now())
+
+  @@unique([taskId, userId])
+}
+
+model TimeEntry {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  taskId    String
+  task      Task     @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  date      DateTime
+  hours     Int      @default(0)
+  note      String?
+  createdAt DateTime @default(now())
+}
+
+model UserAvailability {
+  id       String   @id @default(cuid())
+  userId   String
+  user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  date     DateTime
+  capacity Int      @default(8)
+  reason   String?
+
+  @@unique([userId, date])
+}

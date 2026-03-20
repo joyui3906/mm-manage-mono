@@ -1,0 +1,11 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "module": "NodeNext",
+    "types": ["node"],
+    "rootDir": "../..",
+    "outDir": "../../.dist/apps/api",
+    "strictPropertyInitialization": false
+  },
+  "include": ["src/**/*"]
+}

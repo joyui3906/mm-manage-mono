@@ -1,5 +1,20 @@
 import { redirect } from "next/navigation";
 import { callApi, getApiErrorMessage } from "../../../../../lib/api";
+import { FormField } from "../../../../../components/ui/FormField";
+
+const getText = (value: FormDataEntryValue | null) => (typeof value === "string" ? value.trim() : "");
+const getOptionalText = (value: FormDataEntryValue | null) => {
+  const text = getText(value);
+  return text.length > 0 ? text : undefined;
+};
+const getNumberValue = (value: FormDataEntryValue | null): number | undefined => {
+  const text = getText(value);
+  if (!text) {
+    return undefined;
+  }
+  const parsed = Number(text);
+  return Number.isFinite(parsed) ? parsed : undefined;
+};
 
 export default function NewProjectTaskPage({
   params,
@@ -13,11 +28,22 @@ export default function NewProjectTaskPage({
   const createTask = async (formData: FormData) => {
     "use server";
 
-    const payload = {
-      title: String(formData.get("title")),
-      plannedHours: Number(formData.get("plannedHours") || 0),
-      dueDate: String(formData.get("dueDate") || ""),
+    const payload: {
+      title: string;
+      plannedHours?: number;
+      dueDate?: string;
+    } = {
+      title: getText(formData.get("title")),
     };
+    const plannedHours = getNumberValue(formData.get("plannedHours"));
+    const dueDate = getOptionalText(formData.get("dueDate"));
+
+    if (plannedHours !== undefined) {
+      payload.plannedHours = plannedHours;
+    }
+    if (dueDate) {
+      payload.dueDate = dueDate;
+    }
 
     try {
       await callApi(`/projects/${params.projectId}/tasks`, {
@@ -33,23 +59,24 @@ export default function NewProjectTaskPage({
   };
 
   return (
-    <main style={{ padding: 24, fontFamily: "ui-sans-serif, system-ui, sans-serif" }}>
-      <h1 style={{ fontSize: 28, marginBottom: 16 }}>작업 등록</h1>
-      {searchParams?.error ? <p style={{ color: "#b91c1c" }}>{searchParams.error}</p> : null}
-      <form action={createTask} style={{ display: "grid", gap: 8, maxWidth: 420 }}>
-        <label>
-          작업명
+    <main>
+      <h1 className="page-title">작업 등록</h1>
+      {searchParams?.error ? <p className="page-message-error">{searchParams.error}</p> : null}
+      <form action={createTask} style={{ maxWidth: 420 }}>
+        <FormField label="작업명" required>
           <input name="title" required />
-        </label>
-        <label>
-          예정 공수(시간)
+        </FormField>
+        <FormField label="예정 공수(시간)">
           <input name="plannedHours" type="number" defaultValue={0} />
-        </label>
-        <label>
-          마감일
+        </FormField>
+        <FormField label="마감일">
           <input name="dueDate" type="date" />
-        </label>
-        <button type="submit">저장</button>
+        </FormField>
+        <div className="form-actions">
+          <button type="submit" className="btn btn-primary">
+            저장
+          </button>
+        </div>
       </form>
     </main>
   );

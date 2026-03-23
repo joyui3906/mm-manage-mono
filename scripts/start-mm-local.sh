@@ -12,5 +12,6 @@ if [ ! -f .env ]; then
   echo "Created .env from .env.example"
 fi
 
-./scripts/start-mm-db.sh --migrate
+./scripts/start-mm-db.sh --migrate --repair-auth
+HOME=/tmp XDG_DATA_HOME=/tmp/.xdg pnpm --filter @mm/prisma db:client:generate
 pnpm dev

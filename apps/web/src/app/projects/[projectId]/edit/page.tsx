@@ -1,5 +1,20 @@
 import { redirect } from "next/navigation";
 import { callApi, getApiErrorMessage } from "../../../../lib/api";
+import { FormField } from "../../../../components/ui/FormField";
+
+const getText = (value: FormDataEntryValue | null) => (typeof value === "string" ? value.trim() : "");
+const getOptionalText = (value: FormDataEntryValue | null) => {
+  const text = getText(value);
+  return text.length > 0 ? text : undefined;
+};
+const getNumberValue = (value: FormDataEntryValue | null): number | undefined => {
+  const text = getText(value);
+  if (!text) {
+    return undefined;
+  }
+  const parsed = Number(text);
+  return Number.isFinite(parsed) ? parsed : undefined;
+};
 
 type ProjectStatus = "planning" | "active" | "on_hold" | "done" | "cancelled";
 
@@ -41,15 +56,36 @@ export default async function EditProjectPage({
   const updateProject = async (formData: FormData) => {
     "use server";
 
-    const payload = {
-      name: String(formData.get("name")),
-      code: String(formData.get("code")),
-      budgetHours: Number(formData.get("budgetHours") || 0),
-      status: String(formData.get("status")),
-      ownerUserId: String(formData.get("ownerUserId")),
-      startDate: String(formData.get("startDate")),
-      endDate: String(formData.get("endDate")),
+    const payload: {
+      name: string;
+      code: string;
+      status: string;
+      budgetHours?: number;
+      ownerUserId?: string;
+      startDate?: string;
+      endDate?: string;
+    } = {
+      name: getText(formData.get("name")),
+      code: getText(formData.get("code")),
+      status: getText(formData.get("status")),
     };
+    const budgetHours = getNumberValue(formData.get("budgetHours"));
+    const ownerUserId = getOptionalText(formData.get("ownerUserId"));
+    const startDate = getOptionalText(formData.get("startDate"));
+    const endDate = getOptionalText(formData.get("endDate"));
+
+    if (budgetHours !== undefined) {
+      payload.budgetHours = budgetHours;
+    }
+    if (ownerUserId !== undefined) {
+      payload.ownerUserId = ownerUserId;
+    }
+    if (startDate) {
+      payload.startDate = startDate;
+    }
+    if (endDate) {
+      payload.endDate = endDate;
+    }
 
     try {
       await callApi(`/projects/${params.projectId}`, {
@@ -66,28 +102,25 @@ export default async function EditProjectPage({
 
   if (!project) {
     return (
-      <main style={{ padding: 24, fontFamily: "ui-sans-serif, system-ui, sans-serif" }}>
-        <h1 style={{ fontSize: 28, marginBottom: 16 }}>프로젝트 수정</h1>
-        <p style={{ color: "#b91c1c" }}>{errorMessage ?? "프로젝트를 불러올 수 없습니다."}</p>
+      <main>
+        <h1 className="page-title">프로젝트 수정</h1>
+        <p className="page-message-error">{errorMessage ?? "프로젝트를 불러올 수 없습니다."}</p>
       </main>
     );
   }
 
   return (
-    <main style={{ padding: 24, fontFamily: "ui-sans-serif, system-ui, sans-serif" }}>
-      <h1 style={{ fontSize: 28, marginBottom: 16 }}>프로젝트 수정</h1>
-      {searchParams?.error ? <p style={{ color: "#b91c1c" }}>{searchParams.error}</p> : null}
-      <form action={updateProject} style={{ display: "grid", gap: 8, maxWidth: 420 }}>
-        <label>
-          프로젝트명
+    <main>
+      <h1 className="page-title">프로젝트 수정</h1>
+      {searchParams?.error ? <p className="page-message-error">{searchParams.error}</p> : null}
+      <form action={updateProject} style={{ maxWidth: 420 }}>
+        <FormField label="프로젝트명" required>
           <input name="name" defaultValue={project.name} required />
-        </label>
-        <label>
-          코드
+        </FormField>
+        <FormField label="코드" required>
           <input name="code" defaultValue={project.code} required />
-        </label>
-        <label>
-          상태
+        </FormField>
+        <FormField label="상태">
           <select name="status" defaultValue={project.status}>
             {projectStatuses.map((status) => (
               <option key={status} value={status}>
@@ -95,26 +128,25 @@ export default async function EditProjectPage({
               </option>
             ))}
           </select>
-        </label>
-        <label>
-          예산 공수(시간)
+        </FormField>
+        <FormField label="예산 공수(시간)">
           <input name="budgetHours" type="number" defaultValue={project.budgetHours} />
-        </label>
-        <label>
-          소유자 ID
+        </FormField>
+        <FormField label="소유자 ID">
           <input name="ownerUserId" defaultValue={project.ownerUserId ?? ""} />
-        </label>
-        <label>
-          시작일
+        </FormField>
+        <FormField label="시작일">
           <input name="startDate" type="date" defaultValue={project.startDate ? project.startDate.slice(0, 10) : ""} />
-        </label>
-        <label>
-          종료일
+        </FormField>
+        <FormField label="종료일">
           <input name="endDate" type="date" defaultValue={project.endDate ? project.endDate.slice(0, 10) : ""} />
-        </label>
-        <button type="submit">수정</button>
+        </FormField>
+        <div className="form-actions">
+          <button type="submit" className="btn btn-primary">
+            수정
+          </button>
+        </div>
       </form>
     </main>
   );
 }
-

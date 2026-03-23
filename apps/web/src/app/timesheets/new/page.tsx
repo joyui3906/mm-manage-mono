@@ -1,5 +1,6 @@
 import { redirect } from "next/navigation";
 import { callApi, getApiErrorMessage } from "../../../lib/api";
+import { FormField } from "../../../components/ui/FormField";
 
 type TimeEntryUser = {
   id: string;
@@ -69,13 +70,12 @@ export default async function NewTimeEntryPage({
   };
 
   return (
-    <main style={{ padding: 24, fontFamily: "ui-sans-serif, system-ui, sans-serif" }}>
-      <h1 style={{ fontSize: 28, marginBottom: 16 }}>공수 입력</h1>
-      {searchParams?.error ? <p style={{ color: "#b91c1c" }}>{searchParams.error}</p> : null}
-      {errorMessage ? <p style={{ color: "#b91c1c" }}>{errorMessage}</p> : null}
-      <form action={createTimeEntry} style={{ display: "grid", gap: 8, maxWidth: 420 }}>
-        <label>
-          작업
+    <main>
+      <h1 className="page-title">공수 입력</h1>
+      {searchParams?.error ? <p className="page-message-error">{searchParams.error}</p> : null}
+      {errorMessage ? <p className="page-message-error">{errorMessage}</p> : null}
+      <form action={createTimeEntry} style={{ maxWidth: 420 }}>
+        <FormField label="작업" required>
           <select name="taskId" required>
             <option value="">선택</option>
             {tasks.map((task) => (
@@ -84,9 +84,8 @@ export default async function NewTimeEntryPage({
               </option>
             ))}
           </select>
-        </label>
-        <label>
-          담당자
+        </FormField>
+        <FormField label="담당자" required>
           <select name="userId" required>
             <option value="">선택</option>
             {users.map((user) => (
@@ -95,20 +94,21 @@ export default async function NewTimeEntryPage({
               </option>
             ))}
           </select>
-        </label>
-        <label>
-          날짜
+        </FormField>
+        <FormField label="날짜" required>
           <input name="date" type="date" required defaultValue={new Date().toISOString().slice(0, 10)} />
-        </label>
-        <label>
-          투입시간
+        </FormField>
+        <FormField label="투입시간" required>
           <input name="hours" type="number" step="1" defaultValue={1} required />
-        </label>
-        <label>
-          비고
+        </FormField>
+        <FormField label="비고">
           <input name="note" />
-        </label>
-        <button type="submit">저장</button>
+        </FormField>
+        <div className="form-actions">
+          <button type="submit" className="btn btn-primary">
+            저장
+          </button>
+        </div>
       </form>
     </main>
   );

@@ -43,6 +43,8 @@ model Organization {
 
   projects    Project[]
   users       User[]
+  teams       Team[]
+  auditLogs   AuditLog[]
 }
 
 model User {
@@ -52,15 +54,19 @@ model User {
   email        String   @unique
   name         String
   role         Role
+  passwordHash  String?
   skills       String[]
   isActive     Boolean  @default(true)
+  teamId       String?
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
   assignments  TaskAssignment[]
   timeEntries  TimeEntry[]
   workloads    UserAvailability[]
+  team         Team?    @relation("TeamMembers", fields: [teamId], references: [id], onDelete: SetNull)
   ownedProjects Project[] @relation("ProjectOwner")
+  auditLogs    AuditLog[] @relation("AuditLogActor")
 }
 
 model Project {
@@ -73,12 +79,26 @@ model Project {
   budgetHours Int           @default(0)
   startDate   DateTime?
   endDate     DateTime?
+  teamId      String?
   ownerUserId String?
   ownerUser   User?         @relation("ProjectOwner", fields: [ownerUserId], references: [id], onDelete: SetNull)
+  team        Team?         @relation("TeamProjects", fields: [teamId], references: [id], onDelete: SetNull)
   createdAt   DateTime      @default(now())
   updatedAt   DateTime      @updatedAt
 
   tasks       Task[]
+}
+
+model Team {
+  id            String   @id @default(cuid())
+  orgId         String
+  organization  Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  name          String
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  users         User[]   @relation("TeamMembers")
+  projects      Project[] @relation("TeamProjects")
 }
 
 model Task {
@@ -133,4 +153,24 @@ model UserAvailability {
   reason   String?
 
   @@unique([userId, date])
+}
+
+model AuditLog {
+  id          String   @id @default(cuid())
+  orgId       String
+  organization Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  actorUserId String?
+  actorUser   User?    @relation("AuditLogActor", fields: [actorUserId], references: [id], onDelete: SetNull)
+  action      String
+  resource    String
+  resourceId  String?
+  beforeState String?
+  afterState  String?
+  metadata    String?
+  createdAt   DateTime @default(now())
+  ipAddress   String?
+  userAgent   String?
+
+  @@index([orgId, createdAt])
+  @@index([resource, resourceId])
 }

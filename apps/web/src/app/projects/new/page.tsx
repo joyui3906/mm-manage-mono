@@ -1,5 +1,21 @@
 import { redirect } from "next/navigation";
 import { callApi, getApiErrorMessage } from "../../../lib/api";
+import { FormField } from "../../../components/ui/FormField";
+
+const getText = (value: FormDataEntryValue | null) => (typeof value === "string" ? value.trim() : "");
+const getOptionalText = (value: FormDataEntryValue | null) => {
+  const text = getText(value);
+  return text.length > 0 ? text : undefined;
+};
+
+const getNumberValue = (value: FormDataEntryValue | null): number | undefined => {
+  const text = getText(value);
+  if (!text) {
+    return undefined;
+  }
+  const parsed = Number(text);
+  return Number.isFinite(parsed) ? parsed : undefined;
+};
 
 export default function NewProjectPage({
   searchParams,
@@ -11,13 +27,28 @@ export default function NewProjectPage({
   const createProject = async (formData: FormData) => {
     "use server";
 
-    const payload = {
-      name: String(formData.get("name")),
-      code: String(formData.get("code")),
-      budgetHours: Number(formData.get("budgetHours") || 0),
-      startDate: String(formData.get("startDate")),
-      endDate: String(formData.get("endDate")),
+    const payload: {
+      name: string;
+      code: string;
+      budgetHours?: number;
+      startDate?: string;
+      endDate?: string;
+    } = {
+      name: getText(formData.get("name")),
+      code: getText(formData.get("code")),
     };
+    const budgetHours = getNumberValue(formData.get("budgetHours"));
+    const startDate = getOptionalText(formData.get("startDate"));
+    const endDate = getOptionalText(formData.get("endDate"));
+    if (budgetHours !== undefined) {
+      payload.budgetHours = budgetHours;
+    }
+    if (startDate) {
+      payload.startDate = startDate;
+    }
+    if (endDate) {
+      payload.endDate = endDate;
+    }
 
     try {
       await callApi("/projects", {
@@ -33,31 +64,30 @@ export default function NewProjectPage({
   };
 
   return (
-    <main style={{ padding: 24, fontFamily: "ui-sans-serif, system-ui, sans-serif" }}>
-      <h1 style={{ fontSize: 28, marginBottom: 16 }}>새 프로젝트</h1>
-      {searchParams?.error ? <p style={{ color: "#b91c1c" }}>{searchParams.error}</p> : null}
-      <form action={createProject} style={{ display: "grid", gap: 8, maxWidth: 420 }}>
-        <label>
-          프로젝트명
+    <main>
+      <h1 className="page-title">새 프로젝트</h1>
+      {searchParams?.error ? <p className="page-message-error">{searchParams.error}</p> : null}
+      <form action={createProject} style={{ maxWidth: 420 }}>
+        <FormField label="프로젝트명" required>
           <input name="name" required />
-        </label>
-        <label>
-          코드
+        </FormField>
+        <FormField label="코드" required>
           <input name="code" required />
-        </label>
-        <label>
-          예산 공수(시간)
+        </FormField>
+        <FormField label="예산 공수(시간)">
           <input name="budgetHours" type="number" defaultValue={0} />
-        </label>
-        <label>
-          시작일
+        </FormField>
+        <FormField label="시작일">
           <input name="startDate" type="date" />
-        </label>
-        <label>
-          종료일
+        </FormField>
+        <FormField label="종료일">
           <input name="endDate" type="date" />
-        </label>
-        <button type="submit">저장</button>
+        </FormField>
+        <div className="form-actions">
+          <button type="submit" className="btn btn-primary">
+            저장
+          </button>
+        </div>
       </form>
     </main>
   );

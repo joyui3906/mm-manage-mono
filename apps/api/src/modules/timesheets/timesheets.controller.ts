@@ -1,25 +1,17 @@
-import { Body, Controller, Get, Param, Post } from "@nestjs/common";
+import { Body, Controller, Get, Inject, Param, Post, Query, Res } from "@nestjs/common";
+import { ApiTags } from "@nestjs/swagger";
+import { z } from "zod";
 import { TimesheetsService } from "./timesheets.service";
 import { Roles } from "../../common/auth/roles.decorator";
 import { CurrentUser } from "../../common/auth/current-user.decorator";
 import { AuthUser } from "../../common/types/current-user";
 import { parseBody } from "../../common/validation/parse";
-import { z } from "zod";
+import { assertInjectedDependency } from "../../common/di/assert";
 
-type CreateAssignmentDto = {
-  taskId: string;
-  userId: string;
-  plannedHours: number;
-  reason?: string;
-};
-
-type CreateTimeEntryDto = {
-  taskId: string;
-  userId: string;
-  date: string;
-  hours: number;
-  note?: string;
-};
+const exportQuerySchema = z.object({
+  resource: z.enum(["entries", "assignments"]).default("entries"),
+  teamId: z.string().optional(),
+});
 
 const createAssignmentSchema = z.object({
   taskId: z.string().min(1),
@@ -36,9 +28,18 @@ const createTimeEntrySchema = z.object({
   note: z.string().optional(),
 });
 
+type CsvExportResponse = {
+  status: (code: number) => CsvExportResponse;
+  send: (body: string) => unknown;
+  setHeader: (name: string, value: string) => void;
+};
+
 @Controller("timesheets")
+@ApiTags("timesheets")
 export class TimesheetsController {
-  constructor(private readonly service: TimesheetsService) {}
+  constructor(@Inject(TimesheetsService) private readonly service: TimesheetsService) {
+    assertInjectedDependency(service, TimesheetsController.name, "TimesheetsService");
+  }
 
   @Get("assignments")
   @Roles("owner", "manager", "member")
@@ -81,13 +82,13 @@ export class TimesheetsController {
   @Post("assignments/:id/approve")
   @Roles("owner", "manager")
   approve(@Param("id") id: string, @CurrentUser() user: AuthUser) {
-    return this.service.updateAssignmentStatus(id, "approved", user.orgId);
+    return this.service.updateAssignmentStatus(id, "approved", user);
   }
 
   @Post("assignments/:id/reject")
   @Roles("owner", "manager")
   reject(@Param("id") id: string, @CurrentUser() user: AuthUser) {
-    return this.service.updateAssignmentStatus(id, "rejected", user.orgId);
+    return this.service.updateAssignmentStatus(id, "rejected", user);
   }
 
   @Post("assignments/:id/cancel")
@@ -95,4 +96,34 @@ export class TimesheetsController {
   cancel(@Param("id") id: string, @CurrentUser() user: AuthUser) {
     return this.service.cancelAssignment(id, user);
   }
+
+  @Get("export")
+  @Roles("owner", "manager", "member")
+  async exportCsv(
+    @Query() query: Record<string, string | string[] | undefined>,
+    @CurrentUser() user: AuthUser,
+    @Res() response: CsvExportResponse,
+  ) {
+    const payload = exportQuerySchema.safeParse({
+      resource: normalizeQuery(query.resource),
+      teamId: normalizeQuery(query.teamId),
+    });
+    if (!payload.success) {
+      return response.status(400).send("invalid export query");
+    }
+
+    const csv = await this.service.exportCsv(payload.data.resource, user, payload.data.teamId);
+    const filename = `${payload.data.resource}-export.csv`;
+
+    response.setHeader("Content-Type", "text/csv; charset=utf-8");
+    response.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
+    response.setHeader("Cache-Control", "no-store");
+    return response.send(csv);
+  }
+}
+
+function normalizeQuery(value: string | string[] | undefined): string | undefined {
+  if (!value) return undefined;
+  if (Array.isArray(value)) return value[0] ?? undefined;
+  return value;
 }

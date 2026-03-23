@@ -1,6 +1,8 @@
 import Link from "next/link";
 import { callApi, getApiErrorMessage } from "../../lib/api";
 import { canWriteProject, getAuthContext } from "../../lib/auth";
+import { DataTable, type TableColumn } from "../../components/ui/DataTable";
+import { StatusBadge } from "../../components/ui/StatusBadge";
 
 type Project = {
   id: string;
@@ -13,6 +15,20 @@ type Project = {
 async function loadProjects(): Promise<Project[]> {
   return callApi<Project[]>("/projects", { cache: "no-store" });
 }
+
+const projectStatusVariant = (status: string): "ok" | "warn" | "danger" | "info" => {
+  const normalized = status.toLowerCase();
+  if (normalized === "active") {
+    return "ok";
+  }
+  if (normalized === "completed" || normalized === "done") {
+    return "info";
+  }
+  if (normalized === "paused") {
+    return "warn";
+  }
+  return "danger";
+};
 
 export default async function ProjectsPage({
   searchParams,
@@ -31,24 +47,54 @@ export default async function ProjectsPage({
   }
 
   const { role } = getAuthContext();
+  const columns: TableColumn<Project>[] = [
+    { key: "name", label: "프로젝트", width: "220px" },
+    { key: "code", label: "코드", width: "120px" },
+    { key: "status", label: "상태" },
+    { key: "budgetHours", label: "예산 공수(h)", align: "right", width: "120px" },
+    { key: "id", label: "액션", align: "center", width: "120px" },
+  ];
 
   return (
-    <main style={{ padding: 24, fontFamily: "ui-sans-serif, system-ui, sans-serif" }}>
-      <h1 style={{ fontSize: 28, marginBottom: 16 }}>프로젝트</h1>
-      {searchParams?.error ? <p style={{ color: "#b91c1c" }}>{searchParams.error}</p> : null}
-      {!errorMessage ? null : <p style={{ color: "#b91c1c" }}>{errorMessage}</p>}
-      {canWriteProject(role) && <Link href="/projects/new">새 프로젝트 등록</Link>}
-      {projects.length === 0 ? <p style={{ marginTop: 12 }}>조회된 프로젝트가 없습니다.</p> : null}
-      <ul style={{ marginTop: 12 }}>
-        {projects.map((project) => (
-          <li key={project.id} style={{ marginBottom: 8 }}>
-            <Link href={`/projects/${project.id}`}>
-              <b>{project.name}</b>
-            </Link>{" "}
-            ({project.code}) - {project.status} /예산 {project.budgetHours}h
-          </li>
-        ))}
-      </ul>
+    <main>
+      <h1 className="page-title">프로젝트</h1>
+      {searchParams?.error ? <p className="page-message-error">{searchParams.error}</p> : null}
+      {!errorMessage ? null : <p className="page-message-error">{errorMessage}</p>}
+      {canWriteProject(role) && (
+        <div className="toolbar">
+          <Link href="/projects/new" className="btn btn-primary">
+            새 프로젝트 등록
+          </Link>
+        </div>
+      )}
+      <DataTable
+        columns={columns}
+        rows={projects}
+        emptyText="조회된 프로젝트가 없습니다."
+        renderCell={(project, column) => {
+          if (column.key === "name") {
+            return (
+              <Link href={`/projects/${project.id}`} style={{ fontWeight: 700 }}>
+                {project.name}
+              </Link>
+            );
+          }
+          if (column.key === "status") {
+            return <StatusBadge variant={projectStatusVariant(project.status)}>{project.status}</StatusBadge>;
+          }
+          if (column.key === "budgetHours") {
+            return <span>{project.budgetHours}</span>;
+          }
+          if (column.key === "id") {
+            return (
+              <Link href={`/projects/${project.id}`} className="btn btn-ghost btn-sm">
+                상세
+              </Link>
+            );
+          }
+          return null;
+        }}
+      />
     </main>
   );
 }

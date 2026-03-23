@@ -3,6 +3,20 @@ set -euo pipefail
 
 PROJECT_DIR="/home/joyui/workspace/mm-manage-mono"
 DB_URL="postgresql://mm_user:mm_password@localhost:5432/mm_manage"
+DB_CONTAINER="mm-postgres"
+RUN_MIGRATE="false"
+RUN_REPAIR_AUTH="false"
+
+for arg in "${@:-}"; do
+  case "$arg" in
+    --migrate)
+      RUN_MIGRATE="true"
+      ;;
+    --repair-auth)
+      RUN_REPAIR_AUTH="true"
+      ;;
+  esac
+done
 
 if ! command -v docker >/dev/null; then
   echo "docker가 없습니다. Docker Desktop/Engine이 설치되어 있지 않은지 확인해 주세요."
@@ -28,12 +42,14 @@ if grep -q "^DATABASE_URL=postgresql://user:password@localhost:5432/mm_manage$" 
   sed -i "s|^DATABASE_URL=.*$|DATABASE_URL=$DB_URL|" .env
 fi
 
-RUN_MIGRATE="${1:-}"
-
-if [ "${RUN_MIGRATE}" = "--migrate" ]; then
+if [ "$RUN_MIGRATE" = "true" ]; then
   echo "DB 컨테이너 시작 + 스키마 반영"
 else
   echo "DB 컨테이너 시작"
+fi
+
+if [ "$RUN_REPAIR_AUTH" = "true" ]; then
+  echo "인증 컬럼 정합성 보정 모드 ON"
 fi
 
 "${COMPOSE_CMD[@]}" up -d mm-postgres >/dev/null
@@ -59,11 +75,44 @@ if [ "${READY:-0}" != "1" ]; then
   exit 1
 fi
 
-if [ "${RUN_MIGRATE}" = "--migrate" ]; then
+if [ "$RUN_MIGRATE" = "true" ]; then
   export HOME=/tmp
   export XDG_DATA_HOME=/tmp/.xdg
   DATABASE_URL="$DB_URL" pnpm --filter @mm/prisma db:push
   echo "db:push 완료"
+fi
+
+if [ "$RUN_REPAIR_AUTH" = "true" ]; then
+  echo "인증 컬럼 보정 실행 중..."
+  "${COMPOSE_CMD[@]}" exec -T "$DB_CONTAINER" psql -U mm_user -d mm_manage <<'SQL'
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1
+    FROM pg_attribute
+    WHERE attrelid = to_regclass('"User"')
+      AND attname = 'passwordHash'
+      AND NOT attisdropped
+  ) THEN
+    EXECUTE 'ALTER TABLE "User" ADD COLUMN "passwordHash" TEXT';
+  END IF;
+
+  IF EXISTS (
+    SELECT 1
+    FROM pg_attribute
+    WHERE attrelid = to_regclass('"User"')
+      AND attname = 'password'
+      AND NOT attisdropped
+  ) THEN
+    EXECUTE '
+      UPDATE "User"
+      SET "passwordHash" = COALESCE("passwordHash", "password")
+      WHERE "passwordHash" IS NULL OR "passwordHash" = ''''
+    ';
+  END IF;
+END $$;
+SQL
+  echo "인증 컬럼 보정 완료"
 fi
 
 echo "DB 상태: up (컨테이너: mm-postgres, DB: mm_manage)"

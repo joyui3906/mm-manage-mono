@@ -1,9 +1,17 @@
-import { ForbiddenException, Injectable, NotFoundException } from "@nestjs/common";
+import { ForbiddenException, Inject, Injectable, InternalServerErrorException, Logger, NotFoundException } from "@nestjs/common";
 import { getPrismaClient } from "@mm/prisma";
+import { AuthUser } from "../../common/types/current-user";
+import { AuditService } from "../audit/audit.service";
+import { assertInjectedDependency } from "../../common/di/assert";
 
 @Injectable()
 export class ProjectsService {
+  private readonly logger = new Logger(ProjectsService.name);
   private readonly prisma = getPrismaClient();
+
+  constructor(@Inject(AuditService) private readonly auditService: AuditService) {
+    assertInjectedDependency(auditService, ProjectsService.name, "AuditService");
+  }
 
   private async ensureProjectBelongsToOrg(projectId: string, orgId: string) {
     const project = await this.prisma.project.findUnique({
@@ -38,6 +46,21 @@ export class ProjectsService {
     }
 
     return task;
+  }
+
+  private async ensureUserBelongsToOrg(userId: string, orgId: string) {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { orgId: true },
+    });
+
+    if (!user) {
+      throw new ForbiddenException("Owner user not found");
+    }
+
+    if (user.orgId !== orgId) {
+      throw new ForbiddenException("Owner user not in this organization");
+    }
   }
 
   findAll(orgId: string) {
@@ -77,9 +100,9 @@ export class ProjectsService {
     budgetHours?: number;
     startDate?: string;
     endDate?: string;
-  }) {
-    const orgId = input.orgId ?? "seed-org-id";
-    const ownerUserId = input.ownerUserId ?? "dev-user";
+  }, actor: AuthUser) {
+    const orgId = input.orgId ?? actor.orgId;
+    const ownerUserId = (input.ownerUserId ?? actor.userId).trim();
 
     await this.prisma.organization.upsert({
       where: { id: orgId },
@@ -90,21 +113,25 @@ export class ProjectsService {
       update: {},
     });
 
-    await this.prisma.user.upsert({
+    const owner = await this.prisma.user.findUnique({
       where: { id: ownerUserId },
-      create: {
-        id: ownerUserId,
-        orgId,
-        email: `${ownerUserId}@demo.local`,
-        name: ownerUserId,
-        role: "manager",
-        skills: [],
-        isActive: true,
-      },
-      update: {
-        orgId,
-      },
     });
+
+    if (!owner) {
+      await this.prisma.user.create({
+        data: {
+          id: ownerUserId,
+          orgId,
+          email: `${ownerUserId}@demo.local`,
+          name: ownerUserId,
+          role: "manager",
+          skills: [],
+          isActive: true,
+        },
+      });
+    } else if (owner.orgId !== orgId) {
+      throw new ForbiddenException("Owner user not in this organization");
+    }
 
     const payload = {
       orgId,
@@ -117,10 +144,47 @@ export class ProjectsService {
       status: "planning",
     };
 
-    return this.prisma.project.create({ data: payload } as any);
+    const projectModel = (this.prisma as { project?: unknown }).project;
+    if (!projectModel || typeof (projectModel as { create?: unknown }).create !== "function") {
+      this.logger.error("project delegate missing", {
+        orgId,
+        userId: actor.userId,
+      });
+      throw new InternalServerErrorException("Project repository is unavailable");
+    }
+
+    const project = await (projectModel as { create: (args: Record<string, unknown>) => Promise<{
+      id: string;
+      name: string;
+      code: string;
+      budgetHours: number;
+      status: string;
+    }>} ).create({ data: payload } as any);
+
+    await this.auditService.record({
+      orgId,
+      actorUserId: actor.userId,
+      action: "project.create",
+      resource: "project",
+      resourceId: project.id,
+      afterState: {
+        id: project.id,
+        name: project.name,
+        code: project.code,
+        budgetHours: project.budgetHours,
+        status: project.status,
+      },
+      metadata: {
+        source: "project.create",
+      },
+    });
+
+    return project;
   }
 
   async findTasksByProject(projectId: string, orgId: string) {
+    await this.ensureProjectBelongsToOrg(projectId, orgId);
+
     return this.prisma.task.findMany({
       where: {
         projectId,
@@ -141,10 +205,26 @@ export class ProjectsService {
     projectId: string,
     input: { title: string; plannedHours?: number; dueDate?: string },
     orgId: string,
+    actor: AuthUser,
   ) {
     await this.ensureProjectBelongsToOrg(projectId, orgId);
 
-    return this.prisma.task.create({
+    const taskModel = (this.prisma as { task?: unknown }).task;
+    if (!taskModel || typeof (taskModel as { create?: unknown }).create !== "function") {
+      this.logger.error("task delegate missing", {
+        orgId,
+        userId: actor.userId,
+        projectId,
+      });
+      throw new InternalServerErrorException("Task repository is unavailable");
+    }
+
+    const task = await (taskModel as { create: (args: Record<string, unknown>) => Promise<{
+      id: string;
+      title: string;
+      plannedHours: number;
+      projectId: string;
+    }>} ).create({
       data: {
         projectId,
         title: input.title,
@@ -153,9 +233,28 @@ export class ProjectsService {
       },
       include: { assignments: true },
     });
+
+    await this.auditService.record({
+      orgId,
+      actorUserId: actor.userId,
+      action: "task.create",
+      resource: "task",
+      resourceId: task.id,
+      afterState: {
+        id: task.id,
+        title: task.title,
+        plannedHours: task.plannedHours,
+        projectId,
+      },
+      metadata: {
+        source: "task.create",
+      },
+    });
+
+    return task;
   }
 
-  async updateProject(projectId: string, input: Record<string, unknown>, orgId: string) {
+  async updateProject(projectId: string, input: Record<string, unknown>, orgId: string, actor: AuthUser) {
     const project = await this.ensureProjectBelongsToOrg(projectId, orgId);
 
     const updateData: Record<string, unknown> = {};
@@ -168,7 +267,9 @@ export class ProjectsService {
     }
 
     if (typeof input.ownerUserId === "string" && input.ownerUserId.trim()) {
-      updateData.ownerUserId = input.ownerUserId;
+      const ownerUserId = input.ownerUserId.trim();
+      await this.ensureUserBelongsToOrg(ownerUserId, orgId);
+      updateData.ownerUserId = ownerUserId;
     }
 
     if (typeof input.budgetHours === "number") {
@@ -191,18 +292,48 @@ export class ProjectsService {
       updateData.endDate = null;
     }
 
-    return this.prisma.project.update({
+    const updated = await this.prisma.project.update({
       where: { id: project.id },
       data: updateData,
     });
+
+    await this.auditService.record({
+      orgId,
+      actorUserId: actor.userId,
+      action: "project.update",
+      resource: "project",
+      resourceId: updated.id,
+      beforeState: project,
+      afterState: updated,
+      metadata: {
+        changedKeys: Object.keys(updateData),
+        source: "project.update",
+      },
+    });
+
+    return updated;
   }
 
-  async deleteProject(projectId: string, orgId: string) {
-    await this.ensureProjectBelongsToOrg(projectId, orgId);
+  async deleteProject(projectId: string, orgId: string, actor: AuthUser) {
+    const project = await this.ensureProjectBelongsToOrg(projectId, orgId);
 
-    return this.prisma.project.delete({
+    const deleted = await this.prisma.project.delete({
       where: { id: projectId },
     });
+
+    await this.auditService.record({
+      orgId,
+      actorUserId: actor.userId,
+      action: "project.delete",
+      resource: "project",
+      resourceId: projectId,
+      beforeState: project,
+      metadata: {
+        source: "project.delete",
+      },
+    });
+
+    return deleted;
   }
 
   async updateTask(
@@ -210,8 +341,9 @@ export class ProjectsService {
     taskId: string,
     input: Record<string, unknown>,
     orgId: string,
+    actor: AuthUser,
   ) {
-    await this.ensureTaskBelongsToProject(taskId, projectId, orgId);
+    const task = await this.ensureTaskBelongsToProject(taskId, projectId, orgId);
 
     const updateData: Record<string, unknown> = {};
     if (typeof input.title === "string" && input.title.trim()) {
@@ -232,18 +364,49 @@ export class ProjectsService {
       updateData.dueDate = null;
     }
 
-    return this.prisma.task.update({
+    const updated = await this.prisma.task.update({
       where: { id: taskId },
       data: updateData,
       include: { assignments: true },
     });
+
+    await this.auditService.record({
+      orgId,
+      actorUserId: actor.userId,
+      action: "task.update",
+      resource: "task",
+      resourceId: task.id,
+      beforeState: task,
+      afterState: updated,
+      metadata: {
+        changedKeys: Object.keys(updateData),
+        source: "task.update",
+      },
+    });
+
+    return updated;
   }
 
-  async deleteTask(projectId: string, taskId: string, orgId: string) {
-    await this.ensureTaskBelongsToProject(taskId, projectId, orgId);
+  async deleteTask(projectId: string, taskId: string, orgId: string, actor: AuthUser) {
+    const task = await this.ensureTaskBelongsToProject(taskId, projectId, orgId);
 
-    return this.prisma.task.delete({
+    const deleted = await this.prisma.task.delete({
       where: { id: taskId },
     });
+
+    await this.auditService.record({
+      orgId,
+      actorUserId: actor.userId,
+      action: "task.delete",
+      resource: "task",
+      resourceId: taskId,
+      beforeState: task,
+      metadata: {
+        projectId,
+        source: "task.delete",
+      },
+    });
+
+    return deleted;
   }
 }

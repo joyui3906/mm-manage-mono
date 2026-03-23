@@ -3,7 +3,12 @@
 ## 먼저 확인할 것
 
 1. `.env` 값 확인 (`DATABASE_URL`, `NEXT_PUBLIC_API_BASE_URL`)
-2. PostgreSQL 연결 후 `libs/prisma/prisma/schema.prisma` 마이그레이션
+2. API 문서(스웨거): `http://localhost:4000/api/docs`
+3. PostgreSQL 연결 후 `libs/prisma/prisma/schema.prisma` 마이그레이션
+   - 회원가입 시 `User.passwordHash`가 없다는 에러가 난다면 다음을 먼저 실행:
+     - `./scripts/start-mm-db.sh --migrate --repair-auth`
+4. API 실행 전 Prisma 클라이언트 생성
+   - `pnpm --filter @mm/prisma db:client:generate`
 3. API 실행: `apps/api`
 4. Web 실행: `apps/web`
 

@@ -22,6 +22,10 @@ cd /home/joyui/workspace/mm-manage-mono
 
 1) `.env` 준비
 - `cp -n .env.example .env`
+- Prisma 클라이언트 생성(최초 1회 또는 설치 직후)
+  - `export HOME=/tmp`
+  - `export XDG_DATA_HOME=/tmp/.xdg`
+  - `pnpm --filter @mm/prisma db:client:generate`
 
 2) DB 반영 + 앱 시작(한 번에)
 
@@ -29,6 +33,14 @@ cd /home/joyui/workspace/mm-manage-mono
 cd /home/joyui/workspace/mm-manage-mono
 chmod +x scripts/start-mm-local.sh
 ./scripts/start-mm-local.sh
+```
+
+동일한 DB를 유지하면서 과거 스키마에서 `password` 컬럼만 존재하는 경우에는 다음처럼 실행하세요.
+
+```bash
+cd /home/joyui/workspace/mm-manage-mono
+chmod +x scripts/start-mm-db.sh
+./scripts/start-mm-db.sh --migrate --repair-auth
 ```
 
 3) 또는 터미널을 2개로 나눠서 실행
@@ -72,11 +84,15 @@ pnpm --filter @mm/prisma db:push
 
 3) 서비스 확인
 - API: `http://localhost:4000/api/health`
+- Swagger: `http://localhost:4000/api/docs`
 - Web: `http://localhost:3000`
 
 문제 재발 시:
 - WSL/윈도우 권한 문제이면 터미널을 관리자권한으로 다시 실행
 - `pnpm` 동작이 안 되면 위 환경변수 순서를 다시 실행
+- `tsx watch` 실행 중 `listen EPERM`가 반복되면 시작하기 전에 다음을 먼저 설정:
+  - `export TMPDIR=/tmp/tsx`
+  - `mkdir -p "$TMPDIR"`
 
 ## 인증 헤더 규약 (임시 MVP)
 

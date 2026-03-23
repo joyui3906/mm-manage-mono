@@ -1,6 +1,7 @@
 import { CanActivate, ExecutionContext, Injectable, UnauthorizedException } from "@nestjs/common";
 import { Reflector } from "@nestjs/core";
 import { RoleEnum } from "@mm/shared";
+import { getPrismaClient } from "@mm/prisma";
 import { IS_PUBLIC_KEY } from "./roles.decorator";
 import { AuthenticatedRequest } from "../types/current-user";
 
@@ -8,7 +9,8 @@ import { AuthenticatedRequest } from "../types/current-user";
 export class AuthGuard implements CanActivate {
   constructor(private reflector: Reflector) {}
 
-  canActivate(context: ExecutionContext): boolean {
+  async canActivate(context: ExecutionContext): Promise<boolean> {
+    const prisma = getPrismaClient();
     const isPublic = this.reflector.getAllAndOverride<boolean>(IS_PUBLIC_KEY, [
       context.getHandler(),
       context.getClass(),
@@ -50,10 +52,41 @@ export class AuthGuard implements CanActivate {
       return true;
     }
 
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      select: {
+        id: true,
+        orgId: true,
+        isActive: true,
+        role: true,
+      },
+    });
+
+    if (!user) {
+      if (process.env.NODE_ENV === "production") {
+        throw new UnauthorizedException("Unknown user");
+      }
+
+      request.user = {
+        userId,
+        orgId,
+        role: roleParse.data,
+      };
+      return true;
+    }
+
+    if (!user.isActive) {
+      throw new UnauthorizedException("Inactive user");
+    }
+
+    if (user.orgId !== orgId) {
+      throw new UnauthorizedException("Organization mismatch");
+    }
+
     request.user = {
-      userId,
-      orgId,
-      role: roleParse.data,
+      userId: user.id,
+      orgId: user.orgId,
+      role: user.role,
     };
     return true;
   }

@@ -6,6 +6,21 @@ type DashboardKpi = {
   pendingAssignments: number;
   totalTasks: number;
   doneTasks: number;
+  unassignedTasks: number;
+  unassignedTasksList: Array<{
+    taskId: string;
+    taskTitle: string;
+    projectCode: string;
+    projectName: string;
+  }>;
+  overloadedCount: number;
+  overloadedUsers: Array<{
+    userId: string;
+    name: string;
+    email: string;
+    plannedHours: number;
+    threshold: number;
+  }>;
 };
 
 async function loadDashboard() {
@@ -19,6 +34,10 @@ export default async function DashboardPage() {
     pendingAssignments: 0,
     totalTasks: 0,
     doneTasks: 0,
+    unassignedTasks: 0,
+    unassignedTasksList: [],
+    overloadedCount: 0,
+    overloadedUsers: [],
   };
   let errorMessage: string | undefined;
 
@@ -45,6 +64,43 @@ export default async function DashboardPage() {
         <p>활성 배정: {data.activeAssignments}</p>
         <p>승인 대기: {data.pendingAssignments}</p>
         <p>총 작업: {data.totalTasks}</p>
+        <p>미배정 작업: {data.unassignedTasks}</p>
+      </section>
+
+      {data.overloadedCount > 0 ? (
+        <section style={{ marginTop: 16 }}>
+          <h2 style={{ fontSize: 20, marginBottom: 8 }}>경고: 초과 배정</h2>
+          <ul style={{ display: "grid", gap: 4 }}>
+            {data.overloadedUsers.map((user) => (
+              <li key={user.userId}>
+                {user.name} ({user.email}) - 배정 {user.plannedHours}h / 임계치 {user.threshold}h
+              </li>
+            ))}
+          </ul>
+        </section>
+      ) : null}
+
+      {data.unassignedTasks > 0 ? (
+        <section style={{ marginTop: 16 }}>
+          <h2 style={{ fontSize: 20, marginBottom: 8 }}>미배정 작업 경고</h2>
+          <ul style={{ display: "grid", gap: 4 }}>
+            {data.unassignedTasksList.map((task) => (
+              <li key={task.taskId}>
+                [{task.projectCode}] {task.taskTitle} / {task.projectName}
+              </li>
+            ))}
+          </ul>
+          {data.unassignedTasks > data.unassignedTasksList.length ? (
+            <p style={{ color: "#64748b", marginTop: 8 }}>
+              미배정 작업이 {data.unassignedTasks}건 있습니다.
+            </p>
+          ) : null}
+        </section>
+      ) : null}
+      <section style={{ marginTop: 16 }}>
+        <p style={{ color: "#64748b" }}>
+          임계치: 사용자 승인 배정 합계 {data.overloadedUsers?.[0]?.threshold ?? 160}h 초과시 경고
+        </p>
       </section>
     </main>
   );

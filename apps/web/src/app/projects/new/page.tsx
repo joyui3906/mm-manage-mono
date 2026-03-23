@@ -1,7 +1,13 @@
 import { redirect } from "next/navigation";
-import { callApi } from "../../../lib/api";
+import { callApi, getApiErrorMessage } from "../../../lib/api";
 
-export default function NewProjectPage() {
+export default function NewProjectPage({
+  searchParams,
+}: {
+  searchParams?: {
+    error?: string;
+  };
+}) {
   const createProject = async (formData: FormData) => {
     "use server";
 
@@ -13,10 +19,15 @@ export default function NewProjectPage() {
       endDate: String(formData.get("endDate")),
     };
 
-    await callApi("/projects", {
-      method: "POST",
-      body: JSON.stringify(payload),
-    });
+    try {
+      await callApi("/projects", {
+        method: "POST",
+        body: JSON.stringify(payload),
+      });
+    } catch (error) {
+      const message = getApiErrorMessage(error);
+      redirect(`/projects/new?error=${encodeURIComponent(message)}`);
+    }
 
     redirect("/projects");
   };
@@ -24,6 +35,7 @@ export default function NewProjectPage() {
   return (
     <main style={{ padding: 24, fontFamily: "ui-sans-serif, system-ui, sans-serif" }}>
       <h1 style={{ fontSize: 28, marginBottom: 16 }}>새 프로젝트</h1>
+      {searchParams?.error ? <p style={{ color: "#b91c1c" }}>{searchParams.error}</p> : null}
       <form action={createProject} style={{ display: "grid", gap: 8, maxWidth: 420 }}>
         <label>
           프로젝트명

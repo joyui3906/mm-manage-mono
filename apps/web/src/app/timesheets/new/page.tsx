@@ -1,5 +1,5 @@
 import { redirect } from "next/navigation";
-import { callApi } from "../../../lib/api";
+import { callApi, getApiErrorMessage } from "../../../lib/api";
 
 type TimeEntryUser = {
   id: string;
@@ -27,8 +27,22 @@ async function loadTasks() {
   return callApi<OrgTask[]>("/timesheets/tasks", { cache: "no-store" });
 }
 
-export default async function NewTimeEntryPage() {
-  const [users, tasks] = await Promise.all([loadUsers(), loadTasks()]);
+export default async function NewTimeEntryPage({
+  searchParams,
+}: {
+  searchParams?: {
+    error?: string;
+  };
+}) {
+  let users: TimeEntryUser[] = [];
+  let tasks: OrgTask[] = [];
+  let errorMessage: string | undefined;
+
+  try {
+    [users, tasks] = await Promise.all([loadUsers(), loadTasks()]);
+  } catch (error) {
+    errorMessage = getApiErrorMessage(error);
+  }
 
   const createTimeEntry = async (formData: FormData) => {
     "use server";
@@ -41,10 +55,15 @@ export default async function NewTimeEntryPage() {
       note: String(formData.get("note") || ""),
     };
 
-    await callApi("/timesheets/entries", {
-      method: "POST",
-      body: JSON.stringify(payload),
-    });
+    try {
+      await callApi("/timesheets/entries", {
+        method: "POST",
+        body: JSON.stringify(payload),
+      });
+    } catch (error) {
+      const message = getApiErrorMessage(error);
+      redirect(`/timesheets/new?error=${encodeURIComponent(message)}`);
+    }
 
     redirect("/timesheets");
   };
@@ -52,6 +71,8 @@ export default async function NewTimeEntryPage() {
   return (
     <main style={{ padding: 24, fontFamily: "ui-sans-serif, system-ui, sans-serif" }}>
       <h1 style={{ fontSize: 28, marginBottom: 16 }}>공수 입력</h1>
+      {searchParams?.error ? <p style={{ color: "#b91c1c" }}>{searchParams.error}</p> : null}
+      {errorMessage ? <p style={{ color: "#b91c1c" }}>{errorMessage}</p> : null}
       <form action={createTimeEntry} style={{ display: "grid", gap: 8, maxWidth: 420 }}>
         <label>
           작업

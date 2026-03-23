@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { callApi } from "../../lib/api";
+import { callApi, getApiErrorMessage } from "../../lib/api";
 import { canWriteProject, getAuthContext } from "../../lib/auth";
 
 type TimeEntry = {
@@ -39,21 +39,43 @@ const updateAssignmentStatus = async (formData: FormData) => {
     return;
   }
 
-  await callApi(`/timesheets/assignments/${assignmentId}/${action}`, {
-    method: "POST",
-  });
+  try {
+    await callApi(`/timesheets/assignments/${assignmentId}/${action}`, {
+      method: "POST",
+    });
 
-  redirect("/timesheets");
-}
+    redirect("/timesheets");
+  } catch (error) {
+    const message = getApiErrorMessage(error);
+    redirect(`/timesheets?error=${encodeURIComponent(message)}`);
+  }
+};
 
-export default async function TimesheetsPage() {
-  const [entries, assignments] = await Promise.all([loadEntries(), loadAssignments()]);
+export default async function TimesheetsPage({
+  searchParams,
+}: {
+  searchParams?: {
+    error?: string;
+  };
+}) {
+  let entries: TimeEntry[] = [];
+  let assignments: Assignment[] = [];
+  let errorMessage: string | undefined;
+
+  try {
+    [entries, assignments] = await Promise.all([loadEntries(), loadAssignments()]);
+  } catch (error) {
+    errorMessage = getApiErrorMessage(error);
+  }
+
   const { role, userId } = getAuthContext();
   const canApprove = canWriteProject(role);
 
   return (
     <main style={{ padding: 24, fontFamily: "ui-sans-serif, system-ui, sans-serif" }}>
       <h1 style={{ fontSize: 28, marginBottom: 16 }}>공수/배정 관리</h1>
+      {searchParams?.error ? <p style={{ color: "#b91c1c" }}>{searchParams.error}</p> : null}
+      {errorMessage ? <p style={{ color: "#b91c1c" }}>{errorMessage}</p> : null}
       <div style={{ marginBottom: 16, display: "flex", gap: 8 }}>
         <Link href="/timesheets/new">새 공수 입력</Link>
         {canApprove ? <Link href="/timesheets/assignments/new">배정 생성</Link> : null}
